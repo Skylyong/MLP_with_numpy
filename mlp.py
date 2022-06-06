@@ -13,32 +13,13 @@ def oracle(x, landmarks):
     d2 = dists.min(axis=1)
     return d1 * d2
 
-
-def make_dataset_regression(size=100, complexity=2, ndim=3, return_landmarks=False):
-    data_mtx = np.random.rand(size, ndim)
-    landmarks = np.random.rand(complexity, ndim)
-    y = oracle(data_mtx, landmarks)
-    if return_landmarks:
-        return data_mtx, y, landmarks
-    else:
-        return data_mtx, y
-
-
-def make_2d_grid_dataset_regression(size, landmarks):
-    x = np.linspace(0.0, 1.0, int(size ** 0.5))
-    y = np.linspace(0.0, 1.0, int(size ** 0.5))
-    xx, yy = np.meshgrid(x, y)
-    print(xx.shape)
-    z = np.dstack((xx, yy))
-    data_mtx = z.reshape(-1, 2)
-    y = oracle(data_mtx, landmarks)
-    return data_mtx, y
-
-
 def oracle_classification(X, pos_landmarks, neg_landmarks):
     pos_value = oracle(X, pos_landmarks)
     neg_value = oracle(X, neg_landmarks)
-    return (pos_value <= neg_value).astype(int)
+    y_ = (pos_value <= neg_value).astype(int)
+    y = np.zeros((y_.shape[0], 2))
+    y[np.arange(y.shape[0]), y_] = 1
+    return y
 
 
 def make_dataset_classification(size=100, complexity=2, ndim=3, return_landmarks=False):
@@ -63,6 +44,8 @@ def make_2d_grid_dataset_classification(size, pos_landmarks, neg_landmarks):
 
 
 def plot_2d_classification(X_test, y_test, preds, pos_landmarks, neg_landmarks):
+    y_test = np.argmax(y_test, axis=1)
+    preds = np.argmax(preds, axis=1)
     acc = np.sum(y_test == preds) / y_test.shape[0]
     fig, (ax1, ax2, ax3) = plt.subplots(1, 3)
     fig.set_size_inches(18, 7)
@@ -84,30 +67,15 @@ def plot_2d_classification(X_test, y_test, preds, pos_landmarks, neg_landmarks):
     ax3.scatter(neg_landmarks[:, 0], neg_landmarks[:, 1], s=200, c='r', marker='*', alpha=0.65)
     plt.show()
 
-def plot_2d_regression(X_test, y_test, preds, landmarks):
-    # YOUR CODE HERE
-    # raise NotImplementedError()
-    fig, (ax1, ax2) = plt.subplots(1, 2)
-    fig.set_size_inches(12, 7)
-    ax1.set_title("Prediction")
-    ax2.set_title("Truth")
-    ax1.scatter(X_test[:, 0], X_test[:, 1], c=preds, marker='o', cmap=plt.cm.coolwarm, alpha=0.2)
-    ax2.scatter(X_test[:, 0], X_test[:, 1], c=y_test, marker='o', cmap=plt.cm.coolwarm, alpha=0.2)
-    ax1.scatter(landmarks[:, 0], landmarks[:, 1], s=200, c='r', marker='*', alpha=0.65)
-    ax2.scatter(landmarks[:, 0], landmarks[:, 1], s=200, c='r', marker='*', alpha=0.65)
-    plt.show()
+
 
 
 # 测试 构造数据集
-# pos_landmarks = np.random.rand(2, 2)
-# neg_landmarks = np.random.rand(2, 2)
-# data_mtx, y_test = make_2d_grid_dataset_classification(10000, pos_landmarks, neg_landmarks)
-#
-# plot_2d_classification(data_mtx, y_test, y_test, pos_landmarks, neg_landmarks)
-#
-# landmarks = np.random.rand(2, 2)
-# X_test, y_test = make_2d_grid_dataset_regression(100000, landmarks)
-# plot_2d_regression(X_test, y_test, y_test, landmarks)
+pos_landmarks = np.random.rand(2, 2)
+neg_landmarks = np.random.rand(2, 2)
+data_mtx, y_test = make_2d_grid_dataset_classification(10000, pos_landmarks, neg_landmarks)
+
+plot_2d_classification(data_mtx, y_test, y_test, pos_landmarks, neg_landmarks)
 
 
 
@@ -121,15 +89,16 @@ def mse_loss_grad(y, t):
 
 
 
-def binary_crossentropy_loss(y, t):
-    y = np.clip(y, 1e-7, 1 - 1e-7)
-    term_0 = (1 - t) * np.log(1 - y + 1e-7)
-    term_1 = t * np.log(y + 1e-7)
-    return -np.mean(term_0 + term_1, axis=0)
+def crossentropy_loss(y, t):
+    y = y.reshape(-1, 1)
+    t = t.reshape(-1, 1)
+    return  -np.sum(t*np.log(y+1e-7), axis=1)
 
 
-def binary_crossentropy_loss_grad(y, t):
-   return (1 / y.shape[1]) * (-(t / y) + ((1 - t) / (1 - y)))
+def crossentropy_loss_grad(y, t):
+    y = y.reshape(-1, 1)+ 1e-7
+    t = t.reshape(-1, 1)
+    return (-t/y)
 
 
 def linear_activation(x):
@@ -154,10 +123,22 @@ def relu_activation(x, alpha=.05):
 def relu_activation_grad(x, alpha=.05):
     return np.where(x < 0, alpha, 1)
 
+def softmax_activation(x):
+    x = x - np.max(x)
+    return np.exp(x)/np.sum(np.exp(x))
+
+def softmax_activation_grad(x):
+    # TODO
+    x = x - np.max(x)
+    b = np.sqrt(np.sum(np.exp(x)))
+    x_= np.exp(x)
+    return  x_*(np.sum(x_)-x_)/b
+
+
 
 # 实现一个包含一个隐藏层和一个输出层的全连接神经网络
 
-def init_multilayer_perceptron(in_dim, hidden_dim, hidden_activation_func, hidden_activation_func_grad,
+def init_multilayer_perceptron(in_dim, hidden_dim, out_dim, hidden_activation_func, hidden_activation_func_grad,
                                out_activation_func, out_activation_func_grad, loss, loss_grad, init_size=1e-3):
     '''
     初始化网络参数、激活函数、损失函数
@@ -172,10 +153,10 @@ def init_multilayer_perceptron(in_dim, hidden_dim, hidden_activation_func, hidde
     :param init_size: 初始化参数的边界
     :return: 一个包含模型要素的list
     '''
-    W_ih = np.random.uniform(-init_size, init_size, (in_dim, hidden_dim))
-    b_ih = np.random.uniform(-init_size, init_size, hidden_dim).reshape(1, -1)
-    W_ho = np.random.uniform(-init_size, init_size, hidden_dim).reshape(1, -1)
-    b_ho = np.random.uniform(-init_size, init_size, 1).reshape(1, -1)
+    W_ih = np.random.uniform(-init_size, init_size, (hidden_dim,in_dim))
+    b_ih = np.random.uniform(-init_size, init_size, hidden_dim).reshape(-1, 1)
+    W_ho = np.random.uniform(-init_size, init_size, (out_dim, hidden_dim))
+    b_ho = np.random.uniform(-init_size, init_size, out_dim).reshape(-1, 1)
     return [W_ih, b_ih, W_ho, b_ho, \
             hidden_activation_func, \
             hidden_activation_func_grad, \
@@ -192,10 +173,10 @@ def forward_multilayer_perceptron(x, perceptron_model, return_pre_activation=Fal
     :param return_pre_activation: 是否返回中间变量(反向传播的时候需要计算中间变量)
     :return: 预测值
     '''
-    x = x.reshape(1, -1)
-    h_ih = x.dot(perceptron_model[0])+perceptron_model[1].reshape(1, -1)
+
+    h_ih = perceptron_model[0].dot(x.reshape(-1,1))+perceptron_model[1]
     h = perceptron_model[4](h_ih)
-    a = h.dot(perceptron_model[2].reshape(-1, 1))+perceptron_model[3]
+    a = perceptron_model[2].dot(h)+perceptron_model[3]
     y = perceptron_model[6](a)
 
     if return_pre_activation:
@@ -214,10 +195,12 @@ def compute_gradient_multilayer_perceptron(x, t, perceptron_model):
     :return: 各参数的梯度
     '''
     y, a, h, h_ih = forward_multilayer_perceptron(x, perceptron_model, return_pre_activation=True)
+    # 求输出层梯度
     Db_ho = perceptron_model[-1](y,t)*perceptron_model[-3](a)
-    DW_ho = perceptron_model[-1](y,t)*perceptron_model[-3](a)*h
-    Db_ih = perceptron_model[-1](y,t)*perceptron_model[-3](a)*perceptron_model[2]*perceptron_model[5](h_ih)
-    DW_ih =  np.tile(Db_ih, (2,1))*x.reshape(-1, 1)
+    DW_ho = np.tile(perceptron_model[-1](y,t)*perceptron_model[-3](a), (1, h.shape[0]))*np.tile(h.reshape(1, -1), (Db_ho.shape[0],1))
+    # 求隐藏层梯度
+    Db_ih = (np.ones(Db_ho.shape).reshape(1,-1)).dot(perceptron_model[-1](y,t)*perceptron_model[-3](a)*perceptron_model[2]).reshape(-1, 1)*perceptron_model[5](h_ih)
+    DW_ih =  Db_ih*np.tile(x.reshape(1, -1), (Db_ih.shape[0],1))
     return DW_ih, Db_ih, DW_ho, Db_ho
 
 
@@ -255,7 +238,7 @@ def fit_multilayer_perceptron(X_train, y_train, hidden_activation_func, hidden_a
     :param verbose: 如果为true，每隔100轮打印一次损失值
     :return: 训练好的模型
     '''
-    model = init_multilayer_perceptron(X_train.shape[1], hidden_dim, hidden_activation_func, hidden_activation_func_grad,
+    model = init_multilayer_perceptron(X_train.shape[1], hidden_dim,y_train.shape[1], hidden_activation_func, hidden_activation_func_grad,
                                out_activation_func, out_activation_func_grad, loss, loss_grad)
     for iter in range(max_n_iter):
         indices = np.arange(X_train.shape[0])
@@ -275,70 +258,43 @@ def fit_multilayer_perceptron(X_train, y_train, hidden_activation_func, hidden_a
             avg_grad[i] /= len(Grad)
         update_multilayer_perceptron(avg_grad, learning_rate, model)
         if verbose and (iter+1)%100 == 0:
-            y = np.zeros(X_train.shape[0])
+            loss_values = np.zeros(X_train.shape[0])
             for i in range(X_train.shape[0]):
-                y[i] = forward_multilayer_perceptron(X_train[i], model)
-            loss_value = loss(y, y_train)
-            print(f"iter: {iter + 1}, loss: {np.average(loss_value)}")
+                y = forward_multilayer_perceptron(X_train[i], model)
+                loss_values[i] = np.sum(loss(y, y_train[i]))
+            print(f"iter: {iter + 1}, loss: {np.average(loss_values)}")
     return model
-
-
-def score_multilayer_perceptron(X_test, perceptron_model):
-    '''
-    计算测试集的预测值
-    :param X_test: 测试集
-    :param perceptron_model: 训练好的模型
-    :return: 预测值
-    '''
-    scores = np.zeros(X_test.shape[0])
-    for i in range(scores.shape[0]):
-        scores[i] = forward_multilayer_perceptron(X_test[i], perceptron_model)
-    return scores
-
 
 def predict_multilayer_perceptron(X_test, perceptron_model):
     '''
-
-    :param X_test:
-    :param perceptron_model:
-    :return:
+    计算模型的预测值
+    :param X_test: 测试集
+    :param perceptron_model: 训练好的模型
+    :return: 预测标签
     '''
-    print (X_test)
-    scores = score_multilayer_perceptron(X_test, perceptron_model)
-
-    print (scores)
-    return np.where(scores >= 0.5, 1, 0).reshape(-1)
+    predicts = []
+    for i in range(X_test.shape[0]):
+        predicts.append(forward_multilayer_perceptron(X_test[i], perceptron_model))
+    predicts = np.array(predicts)
+    return np.argmax(predicts, axis=1)
 
 
 # Test Q7
-# data, y, pos_landmarks, neg_landmarks = make_dataset_classification(size=300, complexity=2, ndim=2, return_landmarks=True)
-# from sklearn.model_selection import train_test_split
-# X_train, X_test, y_train, y_test = train_test_split(data, y, test_size=.3)
-# X_test, y_test = make_2d_grid_dataset_classification(3000, pos_landmarks, neg_landmarks)
-#
-# perceptron_model = fit_multilayer_perceptron(X_train, y_train,
-#                                              relu_activation, relu_activation_grad,
-#                                              logistic_activation, logistic_activation_grad,
-#                                              binary_crossentropy_loss, binary_crossentropy_loss_grad,
-#                                              learning_rate=1e-1, hidden_dim=4, batch_size=32,
-#                                              max_n_iter=3000, verbose=True)
-# preds = predict_multilayer_perceptron(X_test, perceptron_model)
-#
-# print (preds, y_test)
-#
-# plot_2d_classification(X_test, y_test, preds, pos_landmarks, neg_landmarks)
+data, y, pos_landmarks, neg_landmarks = make_dataset_classification(size=300, complexity=2, ndim=2, return_landmarks=True)
 
-# regression
-# data, y, landmarks = make_dataset_regression(size=300, complexity=2, ndim=2, return_landmarks=True)
-# from sklearn.model_selection import train_test_split
-# X_train, X_test, y_train, y_test = train_test_split(data, y, test_size=.3)
-# X_test, y_test = make_2d_grid_dataset_regression(3000, landmarks)
-#
-# perceptron_model = fit_multilayer_perceptron(X_train, y_train,
-#                                              relu_activation, relu_activation_grad,
-#                                              linear_activation, linear_activation_grad,
-#                                              mse_loss, mse_loss_grad,
-#                                              learning_rate=1e-2, hidden_dim=4, batch_size=32,
-#                                              max_n_iter=3000, verbose=True)
-# preds = score_multilayer_perceptron(X_test, perceptron_model)
-# plot_2d_regression(X_test, y_test, preds, landmarks)
+from sklearn.model_selection import train_test_split
+X_train, X_test, y_train, y_test = train_test_split(data, y, test_size=.3)
+X_test, y_test = make_2d_grid_dataset_classification(3000, pos_landmarks, neg_landmarks)
+
+
+perceptron_model = fit_multilayer_perceptron(X_train, y_train,
+                                             relu_activation, relu_activation_grad,
+                                             softmax_activation, softmax_activation_grad,
+                                             crossentropy_loss, crossentropy_loss_grad,
+                                             learning_rate=1e-2, hidden_dim=4, batch_size=32,
+                                             max_n_iter=3000, verbose=True)
+preds = predict_multilayer_perceptron(X_test, perceptron_model)
+
+print (preds, y_test)
+
+plot_2d_classification(X_test, y_test, preds, pos_landmarks, neg_landmarks)
