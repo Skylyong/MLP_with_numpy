@@ -88,17 +88,22 @@ def mse_loss_grad(y, t):
     return 2*(y-t)/np.prod(y.shape)
 
 
+def softmax_activation(x):
+    x = x - np.max(x)
+    return np.exp(x)/np.sum(np.exp(x))
 
 def crossentropy_loss(y, t):
     y = y.reshape(-1, 1)
     t = t.reshape(-1, 1)
-    return  -np.sum(t*np.log(y+1e-7), axis=1)
+    y = softmax_activation(y)
+    return -np.sum(t*np.log(y+1e-7))
 
 
 def crossentropy_loss_grad(y, t):
-    y = y.reshape(-1, 1)+ 1e-7
+    # 交叉熵偏导数推导 https://zhuanlan.zhihu.com/p/105722023
+    y = y.reshape(-1, 1)
     t = t.reshape(-1, 1)
-    return (-t/y)
+    return y-t
 
 
 def linear_activation(x):
@@ -106,7 +111,7 @@ def linear_activation(x):
 
 
 def linear_activation_grad(x):
-    return np.array([1])
+    return np.ones(x.shape)
 
 
 def logistic_activation(x):
@@ -122,17 +127,6 @@ def relu_activation(x, alpha=.05):
 
 def relu_activation_grad(x, alpha=.05):
     return np.where(x < 0, alpha, 1)
-
-def softmax_activation(x):
-    x = x - np.max(x)
-    return np.exp(x)/np.sum(np.exp(x))
-
-def softmax_activation_grad(x):
-    # TODO
-    x = x - np.max(x)
-    b = np.sqrt(np.sum(np.exp(x)))
-    x_= np.exp(x)
-    return  x_*(np.sum(x_)-x_)/b
 
 
 
@@ -276,7 +270,7 @@ def predict_multilayer_perceptron(X_test, perceptron_model):
     for i in range(X_test.shape[0]):
         predicts.append(forward_multilayer_perceptron(X_test[i], perceptron_model))
     predicts = np.array(predicts)
-    return np.argmax(predicts, axis=1)
+    return predicts.reshape(X_test.shape[0], -1)
 
 
 # Test Q7
@@ -284,15 +278,16 @@ data, y, pos_landmarks, neg_landmarks = make_dataset_classification(size=300, co
 
 from sklearn.model_selection import train_test_split
 X_train, X_test, y_train, y_test = train_test_split(data, y, test_size=.3)
+X_train, y_train = data, y
 X_test, y_test = make_2d_grid_dataset_classification(3000, pos_landmarks, neg_landmarks)
 
 
 perceptron_model = fit_multilayer_perceptron(X_train, y_train,
                                              relu_activation, relu_activation_grad,
-                                             softmax_activation, softmax_activation_grad,
+                                             linear_activation, linear_activation_grad,
                                              crossentropy_loss, crossentropy_loss_grad,
-                                             learning_rate=1e-2, hidden_dim=4, batch_size=32,
-                                             max_n_iter=3000, verbose=True)
+                                             learning_rate=1e-1, hidden_dim=4, batch_size=32,
+                                             max_n_iter=2000, verbose=True)
 preds = predict_multilayer_perceptron(X_test, perceptron_model)
 
 print (preds, y_test)
