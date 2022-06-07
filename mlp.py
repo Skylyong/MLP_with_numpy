@@ -13,6 +13,8 @@ def oracle(x, landmarks):
     d2 = dists.min(axis=1)
     return d1 * d2
 
+
+
 def oracle_classification(X, pos_landmarks, neg_landmarks):
     pos_value = oracle(X, pos_landmarks)
     neg_value = oracle(X, neg_landmarks)
@@ -244,13 +246,13 @@ def fit_multilayer_perceptron(X_train, y_train, hidden_activation_func, hidden_a
             for k, index in enumerate(batch_indices):
                 grad = compute_gradient_multilayer_perceptron(X_train[index], y_train[index], model)
                 Grad.append(grad)
-        avg_grad = [Grad[0][0],Grad[0][1],Grad[0][2],Grad[0][3]]
-        for  g in Grad[1:]:
+            avg_grad = [Grad[0][0],Grad[0][1],Grad[0][2],Grad[0][3]]
+            for  g in Grad[1:]:
+                for i in range(4):
+                    avg_grad[i] += g[i]
             for i in range(4):
-                avg_grad[i] += g[i]
-        for i in range(4):
-            avg_grad[i] /= len(Grad)
-        update_multilayer_perceptron(avg_grad, learning_rate, model)
+                avg_grad[i] /= len(Grad)
+            update_multilayer_perceptron(avg_grad, learning_rate, model)
         if verbose and (iter+1)%100 == 0:
             loss_values = np.zeros(X_train.shape[0])
             for i in range(X_train.shape[0]):
@@ -286,7 +288,7 @@ perceptron_model = fit_multilayer_perceptron(X_train, y_train,
                                              relu_activation, relu_activation_grad,
                                              linear_activation, linear_activation_grad,
                                              crossentropy_loss, crossentropy_loss_grad,
-                                             learning_rate=1e-1, hidden_dim=4, batch_size=32,
+                                             learning_rate=1e-2, hidden_dim=4, batch_size=32,
                                              max_n_iter=2000, verbose=True)
 preds = predict_multilayer_perceptron(X_test, perceptron_model)
 
